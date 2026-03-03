@@ -53,4 +53,4 @@ Translator/
 
 ## 许可证
 
-本示例仅供学习与参考使用。
+本项目采用 [MIT License](LICENSE) 开源，Copyright (c) 2026 TheScenery。
