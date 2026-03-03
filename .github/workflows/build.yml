@@ -1,0 +1,68 @@
+name: Build and package
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Release
+        run: |
+          xcodebuild -scheme Translator \
+            -configuration Release \
+            -derivedDataPath build/DerivedData \
+            -destination 'platform=macOS' \
+            clean build
+
+      - name: Read version from Xcode project
+        id: version
+        run: |
+          PBX=Translator.xcodeproj/project.pbxproj
+          MARKETING=$(grep -m1 "MARKETING_VERSION" "$PBX" | sed 's/.*= *\(.*\);/\1/')
+          BUILD=$(grep -m1 "CURRENT_PROJECT_VERSION" "$PBX" | sed 's/.*= *\(.*\);/\1/')
+          # Trim spaces
+          MARKETING=$(echo "$MARKETING" | xargs)
+          BUILD=$(echo "$BUILD" | xargs)
+          echo "marketing=$MARKETING" >> $GITHUB_OUTPUT
+          echo "build=$BUILD" >> $GITHUB_OUTPUT
+          echo "full=${MARKETING}.${BUILD}" >> $GITHUB_OUTPUT
+
+      - name: Create DMG
+        run: |
+          set -e
+          APP_NAME=Translator
+          VERSION="${{ steps.version.outputs.full }}"
+          DMG_NAME="${APP_NAME}-${VERSION}"
+          SRC_APP="build/DerivedData/Build/Products/Release/${APP_NAME}.app"
+          DMG_DIR="dist"
+          mkdir -p "$DMG_DIR"
+
+          # Create temporary DMG (read-write)
+          hdiutil create -volname "$APP_NAME" -srcfolder "$SRC_APP" -ov -fs HFS+ -format UDRW -size 80m "$DMG_DIR/${DMG_NAME}-temp.dmg"
+
+          # Mount and add Applications symlink
+          DEVICE=$(hdiutil attach -readwrite -noverify -noautoopen "$DMG_DIR/${DMG_NAME}-temp.dmg" | awk 'NR==1{print $1}')
+          MOUNT_POINT="/Volumes/${APP_NAME}"
+
+          ln -sf /Applications "$MOUNT_POINT/Applications"
+          hdiutil detach "$DEVICE"
+
+          # Convert to read-only compressed DMG
+          hdiutil convert "$DMG_DIR/${DMG_NAME}-temp.dmg" -format UDZO -o "$DMG_DIR/${DMG_NAME}.dmg"
+          rm -f "$DMG_DIR/${DMG_NAME}-temp.dmg"
+
+          echo "DMG_PATH=$DMG_DIR/${DMG_NAME}.dmg" >> $GITHUB_ENV
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Translator-${{ steps.version.outputs.full }}
+          path: dist/Translator-${{ steps.version.outputs.full }}.dmg
