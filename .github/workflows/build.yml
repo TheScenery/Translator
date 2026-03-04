@@ -36,11 +36,20 @@ jobs:
           echo "build=$BUILD" >> $GITHUB_OUTPUT
           echo "full=${MARKETING}.${BUILD}" >> $GITHUB_OUTPUT
 
+      - name: Set DMG version from tag
+        id: dmg_version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ steps.version.outputs.full }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create DMG
         run: |
           set -e
           APP_NAME=Translator
-          VERSION="${{ steps.version.outputs.full }}"
+          VERSION="${{ steps.dmg_version.outputs.version }}"
           DMG_NAME="${APP_NAME}-${VERSION}"
           SRC_APP="build/DerivedData/Build/Products/Release/${APP_NAME}.app"
           DMG_DIR="dist"
